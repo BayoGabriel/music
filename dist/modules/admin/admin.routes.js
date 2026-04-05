@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.adminRouter = void 0;
+const express_1 = require("express");
+const roles_1 = require("../../common/constants/roles");
+const auth_guard_1 = require("../../common/guards/auth.guard");
+const roles_guard_1 = require("../../common/guards/roles.guard");
+const upload_middleware_1 = require("../../common/middleware/upload.middleware");
+const validate_middleware_1 = require("../../common/middleware/validate.middleware");
+const async_handler_1 = require("../../common/utils/async-handler");
+const platform_routes_1 = require("../platform/platform.routes");
+const songs_controller_1 = require("../songs/songs.controller");
+const songs_validation_1 = require("../songs/songs.validation");
+exports.adminRouter = (0, express_1.Router)();
+exports.adminRouter.use(auth_guard_1.authGuard, (0, roles_guard_1.rolesGuard)([roles_1.Role.ADMIN]));
+exports.adminRouter.post("/songs", upload_middleware_1.uploadSongFilesMiddleware, (0, validate_middleware_1.validateRequest)({ body: songs_validation_1.createSongBodySchema }), (0, async_handler_1.asyncHandler)(songs_controller_1.songsController.createSong.bind(songs_controller_1.songsController)));
+exports.adminRouter.patch("/songs/:id", (0, validate_middleware_1.validateRequest)({ params: songs_validation_1.songIdParamsSchema, body: songs_validation_1.updateSongSchema }), (0, async_handler_1.asyncHandler)(songs_controller_1.songsController.updateSong.bind(songs_controller_1.songsController)));
+exports.adminRouter.delete("/songs/:id", (0, validate_middleware_1.validateRequest)({ params: songs_validation_1.songIdParamsSchema }), (0, async_handler_1.asyncHandler)(songs_controller_1.songsController.deleteSong.bind(songs_controller_1.songsController)));
+exports.adminRouter.use("/platform", platform_routes_1.platformRouter);
+//# sourceMappingURL=admin.routes.js.map
