@@ -140,7 +140,7 @@ Behavior:
 
 ## Validation and Security
 
-- Passwords are hashed with bcrypt
+- Passwords are hashed with bcryptjs
 - JWT authentication is required for protected routes
 - Role-based access control protects admin endpoints
 - Zod validates request payloads and route params
