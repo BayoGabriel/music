@@ -9,12 +9,14 @@ import {
 } from "./database";
 import { platformService } from "./modules/platform/platform.service";
 import { usersService } from "./modules/users/users.service";
+import { withdrawalService } from "./modules/withdrawal/withdrawal.service";
 
 const startServer = async () => {
   await connectToMongo();
   await connectToRedis();
   await platformService.ensureSettingsDocument();
   await platformService.warmMusicEnabledCache();
+  await withdrawalService.ensureSettingsDocument();
   await usersService.ensureAdminAccount();
 
   const app = createApp();

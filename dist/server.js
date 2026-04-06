@@ -6,11 +6,13 @@ const logger_1 = require("./config/logger");
 const database_1 = require("./database");
 const platform_service_1 = require("./modules/platform/platform.service");
 const users_service_1 = require("./modules/users/users.service");
+const withdrawal_service_1 = require("./modules/withdrawal/withdrawal.service");
 const startServer = async () => {
     await (0, database_1.connectToMongo)();
     await (0, database_1.connectToRedis)();
     await platform_service_1.platformService.ensureSettingsDocument();
     await platform_service_1.platformService.warmMusicEnabledCache();
+    await withdrawal_service_1.withdrawalService.ensureSettingsDocument();
     await users_service_1.usersService.ensureAdminAccount();
     const app = (0, app_1.createApp)();
     const server = app.listen(env_1.env.port, () => {

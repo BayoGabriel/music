@@ -6,6 +6,7 @@ import { adminRouter } from "./modules/admin/admin.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { songsRouter } from "./modules/songs/songs.routes";
 import { usersRouter } from "./modules/users/users.routes";
+import { withdrawalRouter } from "./modules/withdrawal/withdrawal.routes";
 import { errorHandlerMiddleware } from "./common/middleware/error-handler.middleware";
 import { notFoundMiddleware } from "./common/middleware/not-found.middleware";
 
@@ -26,6 +27,7 @@ export const createApp = () => {
   app.use("/auth", authRouter);
   app.use("/users", usersRouter);
   app.use("/songs", songsRouter);
+  app.use("/withdrawal", withdrawalRouter);
   app.use("/admin", adminRouter);
 
   app.use(notFoundMiddleware);

@@ -12,6 +12,7 @@ const admin_routes_1 = require("./modules/admin/admin.routes");
 const auth_routes_1 = require("./modules/auth/auth.routes");
 const songs_routes_1 = require("./modules/songs/songs.routes");
 const users_routes_1 = require("./modules/users/users.routes");
+const withdrawal_routes_1 = require("./modules/withdrawal/withdrawal.routes");
 const error_handler_middleware_1 = require("./common/middleware/error-handler.middleware");
 const not_found_middleware_1 = require("./common/middleware/not-found.middleware");
 const createApp = () => {
@@ -28,6 +29,7 @@ const createApp = () => {
     app.use("/auth", auth_routes_1.authRouter);
     app.use("/users", users_routes_1.usersRouter);
     app.use("/songs", songs_routes_1.songsRouter);
+    app.use("/withdrawal", withdrawal_routes_1.withdrawalRouter);
     app.use("/admin", admin_routes_1.adminRouter);
     app.use(not_found_middleware_1.notFoundMiddleware);
     app.use(error_handler_middleware_1.errorHandlerMiddleware);
