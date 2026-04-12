@@ -1,29 +1,29 @@
-import { AppError } from '../../common/errors/app-error';
-import { safeGetCacheValue, safeSetCacheValue } from '../../database/redis';
-import { PlatformSettingsModel, PLATFORM_SETTINGS_ID } from './platform-settings.model';
+import { AppError } from "../../common/errors/app-error";
+import { prisma } from "../../database";
+import { safeGetCacheValue, safeSetCacheValue } from "../../database/redis";
 
-const MUSIC_ENABLED_CACHE_KEY = 'music_enabled';
+export const PLATFORM_SETTINGS_ID = "platform_settings";
+
+const MUSIC_ENABLED_CACHE_KEY = "music_enabled";
 
 class PlatformService {
   public async ensureSettingsDocument() {
-    await PlatformSettingsModel.updateOne(
-      { _id: PLATFORM_SETTINGS_ID },
-      {
-        $setOnInsert: {
-          _id: PLATFORM_SETTINGS_ID,
-          musicEnabled: true
-        }
+    await prisma.platformSetting.upsert({
+      where: { id: PLATFORM_SETTINGS_ID },
+      update: {},
+      create: {
+        id: PLATFORM_SETTINGS_ID,
+        musicEnabled: true,
       },
-      {
-        upsert: true,
-        setDefaultsOnInsert: true
-      }
-    ).exec();
+    });
   }
 
   public async warmMusicEnabledCache() {
     const settings = await this.getSettingsFromDatabase();
-    await safeSetCacheValue(MUSIC_ENABLED_CACHE_KEY, String(settings.musicEnabled));
+    await safeSetCacheValue(
+      MUSIC_ENABLED_CACHE_KEY,
+      String(settings.musicEnabled),
+    );
   }
 
   public async getSettings() {
@@ -33,51 +33,49 @@ class PlatformService {
   public async isMusicEnabled() {
     const cachedValue = await safeGetCacheValue(MUSIC_ENABLED_CACHE_KEY);
 
-    if (cachedValue === 'true') {
+    if (cachedValue === "true") {
       return true;
     }
 
-    if (cachedValue === 'false') {
+    if (cachedValue === "false") {
       return false;
     }
 
     const settings = await this.getSettingsFromDatabase();
-    await safeSetCacheValue(MUSIC_ENABLED_CACHE_KEY, String(settings.musicEnabled));
+    await safeSetCacheValue(
+      MUSIC_ENABLED_CACHE_KEY,
+      String(settings.musicEnabled),
+    );
     return settings.musicEnabled;
   }
 
   public async setMusicEnabled(value: boolean) {
-    const updatedSettings = await PlatformSettingsModel.findOneAndUpdate(
-      { _id: PLATFORM_SETTINGS_ID },
-      {
-        $set: {
-          musicEnabled: value
-        },
-        $setOnInsert: {
-          _id: PLATFORM_SETTINGS_ID
-        }
+    const updatedSettings = await prisma.platformSetting.upsert({
+      where: { id: PLATFORM_SETTINGS_ID },
+      update: {
+        musicEnabled: value,
       },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true
-      }
-    ).exec();
+      create: {
+        id: PLATFORM_SETTINGS_ID,
+        musicEnabled: value,
+      },
+    });
 
-    if (!updatedSettings) {
-      throw new AppError(500, 'Unable to update platform settings');
-    }
-
-    await safeSetCacheValue(MUSIC_ENABLED_CACHE_KEY, String(updatedSettings.musicEnabled));
+    await safeSetCacheValue(
+      MUSIC_ENABLED_CACHE_KEY,
+      String(updatedSettings.musicEnabled),
+    );
 
     return updatedSettings;
   }
 
   private async getSettingsFromDatabase() {
-    const settings = await PlatformSettingsModel.findById(PLATFORM_SETTINGS_ID).exec();
+    const settings = await prisma.platformSetting.findUnique({
+      where: { id: PLATFORM_SETTINGS_ID },
+    });
 
     if (!settings) {
-      throw new AppError(500, 'Platform settings are not initialized');
+      throw new AppError(500, "Platform settings are not initialized");
     }
 
     return settings;

@@ -2,13 +2,15 @@ import { Role, type Role as RoleType } from "../../common/constants/roles";
 import { AppError } from "../../common/errors/app-error";
 import { hashPassword } from "../../common/utils/password";
 import { env } from "../../config/env";
-import { UserModel } from "./user.model";
+import { prisma } from "../../database";
+
+const toStoredRole = (role: string): RoleType => role as RoleType;
 
 const toUserResponse = (
   user: {
-    _id: { toString(): string };
+    id: string;
     email: string;
-    role: RoleType;
+    role: string;
     createdAt: Date;
   } | null,
 ) => {
@@ -17,20 +19,20 @@ const toUserResponse = (
   }
 
   return {
-    id: user._id.toString(),
+    id: user.id,
     email: user.email,
-    role: user.role,
+    role: toStoredRole(user.role),
     createdAt: user.createdAt,
   };
 };
 
 class UsersService {
   public async findByEmail(email: string) {
-    return UserModel.findOne({ email }).exec();
+    return prisma.user.findUnique({ where: { email } });
   }
 
   public async findById(userId: string) {
-    return UserModel.findById(userId).exec();
+    return prisma.user.findUnique({ where: { id: userId } });
   }
 
   public async createUser(payload: {
@@ -45,10 +47,12 @@ class UsersService {
     }
 
     const passwordHash = await hashPassword(payload.password);
-    const user = await UserModel.create({
-      email: payload.email,
-      passwordHash,
-      role: payload.role ?? Role.USER,
+    const user = await prisma.user.create({
+      data: {
+        email: payload.email,
+        passwordHash,
+        role: toStoredRole(payload.role ?? Role.USER),
+      },
     });
 
     return toUserResponse(user);
@@ -73,9 +77,13 @@ class UsersService {
 
     if (existingUser) {
       if (existingUser.role !== Role.ADMIN) {
-        existingUser.role = Role.ADMIN;
-        existingUser.passwordHash = await hashPassword(env.adminPassword);
-        await existingUser.save();
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            role: Role.ADMIN,
+            passwordHash: await hashPassword(env.adminPassword),
+          },
+        });
       }
       return;
     }

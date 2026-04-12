@@ -9,41 +9,46 @@ class AuthService {
     async register(payload) {
         const user = await users_service_1.usersService.createUser(payload);
         if (!user) {
-            throw new app_error_1.AppError(500, 'Unable to create user');
+            throw new app_error_1.AppError(500, "Unable to create user");
         }
         const token = (0, jwt_1.signAuthToken)({
             sub: user.id,
             email: user.email,
-            role: user.role
+            role: user.role,
         });
         return {
             token,
-            user
+            user: {
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                createdAt: user.createdAt,
+            },
         };
     }
     async login(payload) {
         const user = await users_service_1.usersService.findByEmail(payload.email);
         if (!user) {
-            throw new app_error_1.AppError(401, 'Invalid email or password');
+            throw new app_error_1.AppError(401, "Invalid email or password");
         }
         const passwordMatches = await (0, password_1.comparePassword)(payload.password, user.passwordHash);
         if (!passwordMatches) {
-            throw new app_error_1.AppError(401, 'Invalid email or password');
+            throw new app_error_1.AppError(401, "Invalid email or password");
         }
         const responseUser = {
-            id: user._id.toString(),
+            id: user.id,
             email: user.email,
             role: user.role,
-            createdAt: user.createdAt
+            createdAt: user.createdAt,
         };
         const token = (0, jwt_1.signAuthToken)({
             sub: responseUser.id,
             email: responseUser.email,
-            role: responseUser.role
+            role: responseUser.role,
         });
         return {
             token,
-            user: responseUser
+            user: responseUser,
         };
     }
 }

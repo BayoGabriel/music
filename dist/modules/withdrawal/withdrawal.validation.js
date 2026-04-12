@@ -3,9 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.coinNetworkPathParamsSchema = exports.coinPathParamsSchema = exports.withdrawalIdParamsSchema = exports.updateNetworkSchema = exports.createNetworkSchema = exports.updateCoinSchema = exports.createCoinSchema = exports.updateWithdrawalMethodsSchema = exports.createWithdrawalSchema = void 0;
 const zod_1 = require("zod");
 const withdrawal_constants_1 = require("./withdrawal.constants");
-const mongoIdSchema = zod_1.z
+const idParamsSchema = zod_1.z
     .object({
-    id: zod_1.z.string().length(24),
+    id: zod_1.z.string().trim().min(1),
 })
     .strict();
 const coinParamsSchema = zod_1.z
@@ -162,7 +162,7 @@ exports.updateNetworkSchema = zod_1.z
     isEnabled: zod_1.z.boolean(),
 })
     .strict();
-exports.withdrawalIdParamsSchema = mongoIdSchema;
+exports.withdrawalIdParamsSchema = idParamsSchema;
 exports.coinPathParamsSchema = coinParamsSchema;
 exports.coinNetworkPathParamsSchema = coinNetworkParamsSchema;
 //# sourceMappingURL=withdrawal.validation.js.map

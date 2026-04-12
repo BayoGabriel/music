@@ -1,4 +1,4 @@
-export { connectToMongo, disconnectFromMongo } from "./mongo";
+export { connectToMySql, disconnectFromMySql, prisma } from "./prisma";
 export {
   connectToRedis,
   disconnectFromRedis,

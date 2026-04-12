@@ -5,24 +5,25 @@ const roles_1 = require("../../common/constants/roles");
 const app_error_1 = require("../../common/errors/app-error");
 const password_1 = require("../../common/utils/password");
 const env_1 = require("../../config/env");
-const user_model_1 = require("./user.model");
+const database_1 = require("../../database");
+const toStoredRole = (role) => role;
 const toUserResponse = (user) => {
     if (!user) {
         return null;
     }
     return {
-        id: user._id.toString(),
+        id: user.id,
         email: user.email,
-        role: user.role,
+        role: toStoredRole(user.role),
         createdAt: user.createdAt,
     };
 };
 class UsersService {
     async findByEmail(email) {
-        return user_model_1.UserModel.findOne({ email }).exec();
+        return database_1.prisma.user.findUnique({ where: { email } });
     }
     async findById(userId) {
-        return user_model_1.UserModel.findById(userId).exec();
+        return database_1.prisma.user.findUnique({ where: { id: userId } });
     }
     async createUser(payload) {
         const existingUser = await this.findByEmail(payload.email);
@@ -30,10 +31,12 @@ class UsersService {
             throw new app_error_1.AppError(409, "Email is already registered");
         }
         const passwordHash = await (0, password_1.hashPassword)(payload.password);
-        const user = await user_model_1.UserModel.create({
-            email: payload.email,
-            passwordHash,
-            role: payload.role ?? roles_1.Role.USER,
+        const user = await database_1.prisma.user.create({
+            data: {
+                email: payload.email,
+                passwordHash,
+                role: toStoredRole(payload.role ?? roles_1.Role.USER),
+            },
         });
         return toUserResponse(user);
     }
@@ -51,9 +54,13 @@ class UsersService {
         const existingUser = await this.findByEmail(env_1.env.adminEmail);
         if (existingUser) {
             if (existingUser.role !== roles_1.Role.ADMIN) {
-                existingUser.role = roles_1.Role.ADMIN;
-                existingUser.passwordHash = await (0, password_1.hashPassword)(env_1.env.adminPassword);
-                await existingUser.save();
+                await database_1.prisma.user.update({
+                    where: { id: existingUser.id },
+                    data: {
+                        role: roles_1.Role.ADMIN,
+                        passwordHash: await (0, password_1.hashPassword)(env_1.env.adminPassword),
+                    },
+                });
             }
             return;
         }

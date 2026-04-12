@@ -3,7 +3,7 @@
 ## Requirements
 
 - Node.js 20+
-- MongoDB
+- MySQL
 - Redis
 - Cloudinary account
 
@@ -20,7 +20,7 @@
 
 - `NODE_ENV`
 - `PORT`
-- `MONGODB_URI`
+- `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
@@ -52,7 +52,7 @@ If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are provided together, an admin account is
 - `src/modules/platform` for the single platform settings document and music state control
 - `src/common` for guards, middleware, errors, constants, and shared utilities
 - `src/config` for environment, logging, and Cloudinary setup
-- `src/database` for MongoDB and Redis connection lifecycle
+- `src/database` for MySQL Prisma and Redis connection lifecycle
 
 ## Endpoints
 
@@ -98,11 +98,11 @@ Music availability is enforced in two layers:
 
 State flow:
 
-1. The value is stored in MongoDB
+1. The value is stored in MySQL
 2. The current state is cached in Redis under `music_enabled`
-3. On startup, the backend ensures the settings document exists and warms the Redis cache from MongoDB
-4. When an admin enables or disables music, MongoDB is updated first and Redis is updated immediately after
-5. If Redis is unavailable, the service falls back to MongoDB and repopulates cache when possible
+3. On startup, the backend ensures the settings row exists and warms the Redis cache from MySQL
+4. When an admin enables or disables music, MySQL is updated first and Redis is updated immediately after
+5. If Redis is unavailable, the service falls back to MySQL and repopulates cache when possible
 
 When disabled, these endpoints return `403`:
 
@@ -124,8 +124,8 @@ Flow:
    - `duration`
 2. Multer stores files in memory only
 3. The backend uploads the audio and image buffers directly to Cloudinary
-4. Only the returned secure URLs are persisted in MongoDB
-5. No files are written to disk and no binary data is stored in MongoDB
+4. Only the returned secure URLs are persisted in MySQL
+5. No files are written to disk and no binary data is stored in MySQL
 
 ## Streaming
 
@@ -144,10 +144,10 @@ Behavior:
 - JWT authentication is required for protected routes
 - Role-based access control protects admin endpoints
 - Zod validates request payloads and route params
-- Mongoose schemas use strict mode
+- Prisma models enforce the relational schema
 - Songs are soft-deleted through `isActive = false`
 - Only active songs are visible to users
-- Redis failures fall back to MongoDB for music state checks
+- Redis failures fall back to MySQL for music state checks
 
 ## Notes
 

@@ -1,8 +1,8 @@
 import { AppError } from "../../common/errors/app-error";
 import { uploadBufferToCloudinary } from "../../config/cloudinary";
 import { env } from "../../config/env";
+import { prisma } from "../../database";
 import { platformService } from "../platform/platform.service";
-import { SongModel } from "./song.model";
 
 const createPublicId = (title: string, suffix: string) => {
   const safeTitle = title
@@ -20,11 +20,13 @@ class SongsService {
     audioFile: Express.Multer.File;
     coverImageFile: Express.Multer.File;
   }) {
-    const duplicateSong = await SongModel.findOne({
-      title: payload.title,
-      artist: payload.artist,
-      isActive: true,
-    }).exec();
+    const duplicateSong = await prisma.song.findFirst({
+      where: {
+        title: payload.title,
+        artist: payload.artist,
+        isActive: true,
+      },
+    });
 
     if (duplicateSong) {
       throw new AppError(
@@ -48,13 +50,15 @@ class SongsService {
       }),
     ]);
 
-    const song = await SongModel.create({
-      title: payload.title,
-      artist: payload.artist,
-      duration: payload.duration,
-      fileUrl: audioUpload.secure_url,
-      coverImageUrl: coverUpload.secure_url,
-      isActive: true,
+    const song = await prisma.song.create({
+      data: {
+        title: payload.title,
+        artist: payload.artist,
+        duration: payload.duration,
+        fileUrl: audioUpload.secure_url,
+        coverImageUrl: coverUpload.secure_url,
+        isActive: true,
+      },
     });
 
     return this.toSongResponse(song);
@@ -64,54 +68,57 @@ class SongsService {
     songId: string,
     payload: { title?: string; artist?: string; duration?: number },
   ) {
-    const song = await SongModel.findById(songId).exec();
+    const existingSong = await prisma.song.findUnique({
+      where: { id: songId },
+    });
 
-    if (!song) {
+    if (!existingSong) {
       throw new AppError(404, "Song not found");
     }
 
-    if (payload.title !== undefined) {
-      song.title = payload.title;
-    }
-
-    if (payload.artist !== undefined) {
-      song.artist = payload.artist;
-    }
-
-    if (payload.duration !== undefined) {
-      song.duration = payload.duration;
-    }
-
-    await song.save();
+    const song = await prisma.song.update({
+      where: { id: songId },
+      data: {
+        ...(payload.title !== undefined ? { title: payload.title } : {}),
+        ...(payload.artist !== undefined ? { artist: payload.artist } : {}),
+        ...(payload.duration !== undefined
+          ? { duration: payload.duration }
+          : {}),
+      },
+    });
 
     return this.toSongResponse(song);
   }
 
   public async softDeleteSong(songId: string) {
-    const song = await SongModel.findById(songId).exec();
+    const song = await prisma.song.findUnique({ where: { id: songId } });
 
     if (!song) {
       throw new AppError(404, "Song not found");
     }
 
-    song.isActive = false;
-    await song.save();
+    await prisma.song.update({
+      where: { id: songId },
+      data: {
+        isActive: false,
+      },
+    });
   }
 
   public async listActiveSongs() {
     await this.assertMusicEnabled();
-    const songs = await SongModel.find({ isActive: true })
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec();
+    const songs = await prisma.song.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+    });
     return songs.map((song) => this.toSongResponse(song));
   }
 
   public async getActiveSongById(songId: string) {
     await this.assertMusicEnabled();
-    const song = await SongModel.findOne({ _id: songId, isActive: true })
-      .lean()
-      .exec();
+    const song = await prisma.song.findFirst({
+      where: { id: songId, isActive: true },
+    });
 
     if (!song) {
       throw new AppError(404, "Song not found");
@@ -122,9 +129,9 @@ class SongsService {
 
   public async getActiveSongStream(songId: string) {
     await this.assertMusicEnabled();
-    const song = await SongModel.findOne({ _id: songId, isActive: true })
-      .lean()
-      .exec();
+    const song = await prisma.song.findFirst({
+      where: { id: songId, isActive: true },
+    });
 
     if (!song) {
       throw new AppError(404, "Song not found");
@@ -144,7 +151,7 @@ class SongsService {
   }
 
   private toSongResponse(song: {
-    _id: unknown;
+    id: string;
     title: string;
     artist: string;
     fileUrl: string;
@@ -154,7 +161,7 @@ class SongsService {
     createdAt: Date;
   }) {
     return {
-      id: String(song._id),
+      id: song.id,
       title: song.title,
       artist: song.artist,
       fileUrl: song.fileUrl,

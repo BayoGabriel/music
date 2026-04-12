@@ -9,7 +9,7 @@ const envSchema = z
       .enum(["development", "test", "production"])
       .default("development"),
     PORT: z.coerce.number().int().positive().default(4000),
-    MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
+    DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
     REDIS_URL: z.string().min(1, "REDIS_URL is required"),
     JWT_SECRET: z
       .string()
@@ -57,7 +57,7 @@ const parsedEnv = envSchema.parse(process.env);
 export const env = {
   nodeEnv: parsedEnv.NODE_ENV,
   port: parsedEnv.PORT,
-  mongodbUri: parsedEnv.MONGODB_URI,
+  databaseUrl: parsedEnv.DATABASE_URL,
   redisUrl: parsedEnv.REDIS_URL,
   jwtSecret: parsedEnv.JWT_SECRET,
   jwtExpiresIn: parsedEnv.JWT_EXPIRES_IN,

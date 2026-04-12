@@ -2,9 +2,9 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import {
-  disconnectFromMongo,
+  disconnectFromMySql,
   disconnectFromRedis,
-  connectToMongo,
+  connectToMySql,
   connectToRedis,
 } from "./database";
 import { platformService } from "./modules/platform/platform.service";
@@ -12,7 +12,7 @@ import { usersService } from "./modules/users/users.service";
 import { withdrawalService } from "./modules/withdrawal/withdrawal.service";
 
 const startServer = async () => {
-  await connectToMongo();
+  await connectToMySql();
   await connectToRedis();
   await platformService.ensureSettingsDocument();
   await platformService.warmMusicEnabledCache();
@@ -28,7 +28,7 @@ const startServer = async () => {
     logger.info("Shutdown signal received", { signal });
 
     server.close(async () => {
-      await Promise.allSettled([disconnectFromRedis(), disconnectFromMongo()]);
+      await Promise.allSettled([disconnectFromRedis(), disconnectFromMySql()]);
       process.exit(0);
     });
 

@@ -1,27 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.withdrawalService = void 0;
-const mongoose_1 = require("mongoose");
 const app_error_1 = require("../../common/errors/app-error");
-const crypto_config_model_1 = require("./crypto-config.model");
-const user_payment_details_model_1 = require("./user-payment-details.model");
-const withdrawal_model_1 = require("./withdrawal.model");
-const withdrawal_settings_model_1 = require("./withdrawal-settings.model");
+const database_1 = require("../../database");
 const withdrawal_constants_1 = require("./withdrawal.constants");
 class WithdrawalService {
     async ensureSettingsDocument() {
-        await withdrawal_settings_model_1.WithdrawalSettingsModel.updateOne({ _id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID }, {
-            $setOnInsert: {
-                _id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID,
+        await database_1.prisma.withdrawalSetting.upsert({
+            where: { id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID },
+            update: {},
+            create: {
+                id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID,
                 paypalEnabled: true,
                 revolutEnabled: true,
                 bankEnabled: true,
                 cryptoEnabled: true,
             },
-        }, {
-            upsert: true,
-            setDefaultsOnInsert: true,
-        }).exec();
+        });
     }
     async getAvailableMethods() {
         const settings = await this.getSettings();
@@ -36,12 +31,20 @@ class WithdrawalService {
             methods.push({ method: withdrawal_constants_1.WithdrawalMethod.BANK });
         }
         if (settings.cryptoEnabled) {
-            const enabledCoins = await crypto_config_model_1.CryptoConfigModel.find({
-                isEnabled: true,
-                "networks.isEnabled": true,
-            })
-                .lean()
-                .exec();
+            const enabledCoins = await database_1.prisma.cryptoConfig.findMany({
+                where: {
+                    isEnabled: true,
+                    networks: {
+                        some: {
+                            isEnabled: true,
+                        },
+                    },
+                },
+                include: {
+                    networks: true,
+                },
+                orderBy: { createdAt: "asc" },
+            });
             methods.push({
                 method: withdrawal_constants_1.WithdrawalMethod.CRYPTO,
                 coins: enabledCoins
@@ -62,7 +65,6 @@ class WithdrawalService {
     }
     async createWithdrawal(userId, payload) {
         const settings = await this.getSettings();
-        const objectId = new mongoose_1.Types.ObjectId(userId);
         if (payload.method === withdrawal_constants_1.WithdrawalMethod.CRYPTO) {
             this.assertMethodEnabled(settings.cryptoEnabled, withdrawal_constants_1.WithdrawalMethod.CRYPTO);
             if (payload.walletAddress !== payload.confirmWallet) {
@@ -74,37 +76,49 @@ class WithdrawalService {
                 network: payload.network,
                 walletAddress: payload.walletAddress,
             };
-            const withdrawal = await withdrawal_model_1.WithdrawalModel.create({
-                userId: objectId,
-                method: withdrawal_constants_1.WithdrawalMethod.CRYPTO,
-                status: withdrawal_constants_1.WithdrawalStatus.PENDING,
-                snapshot,
+            const withdrawal = await database_1.prisma.withdrawal.create({
+                data: {
+                    userId,
+                    method: withdrawal_constants_1.WithdrawalMethod.CRYPTO,
+                    status: withdrawal_constants_1.WithdrawalStatus.PENDING,
+                    snapshot: {
+                        create: snapshot,
+                    },
+                },
+                include: {
+                    snapshot: true,
+                },
             });
             return this.serializeWithdrawal(withdrawal);
         }
-        const snapshot = await this.resolveNonCryptoSnapshot(objectId, settings, payload);
-        const withdrawal = await withdrawal_model_1.WithdrawalModel.create({
-            userId: objectId,
-            method: payload.method,
-            status: withdrawal_constants_1.WithdrawalStatus.PENDING,
-            snapshot,
+        const snapshot = await this.resolveNonCryptoSnapshot(userId, settings, payload);
+        const withdrawal = await database_1.prisma.withdrawal.create({
+            data: {
+                userId,
+                method: payload.method,
+                status: withdrawal_constants_1.WithdrawalStatus.PENDING,
+                snapshot: {
+                    create: snapshot,
+                },
+            },
+            include: {
+                snapshot: true,
+            },
         });
         return this.serializeWithdrawal(withdrawal);
     }
     async updateMethodSettings(payload) {
-        const updated = await withdrawal_settings_model_1.WithdrawalSettingsModel.findOneAndUpdate({ _id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID }, {
-            $set: payload,
-            $setOnInsert: {
-                _id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID,
+        const updated = await database_1.prisma.withdrawalSetting.upsert({
+            where: { id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID },
+            update: payload,
+            create: {
+                id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID,
+                paypalEnabled: payload.paypalEnabled ?? true,
+                revolutEnabled: payload.revolutEnabled ?? true,
+                bankEnabled: payload.bankEnabled ?? true,
+                cryptoEnabled: payload.cryptoEnabled ?? true,
             },
-        }, {
-            upsert: true,
-            new: true,
-            setDefaultsOnInsert: true,
-        }).exec();
-        if (!updated) {
-            throw new app_error_1.AppError(500, "Unable to update withdrawal settings");
-        }
+        });
         return {
             paypalEnabled: updated.paypalEnabled,
             revolutEnabled: updated.revolutEnabled,
@@ -114,30 +128,48 @@ class WithdrawalService {
         };
     }
     async createCoin(payload) {
-        const existing = await crypto_config_model_1.CryptoConfigModel.findOne({
-            coin: payload.coin,
-        }).exec();
+        const existing = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: payload.coin },
+        });
         if (existing) {
             throw new app_error_1.AppError(409, "Coin already exists");
         }
-        const coin = await crypto_config_model_1.CryptoConfigModel.create({
-            coin: payload.coin,
-            isEnabled: true,
-            networks: [],
+        const coin = await database_1.prisma.cryptoConfig.create({
+            data: {
+                coin: payload.coin,
+                isEnabled: true,
+            },
+            include: {
+                networks: true,
+            },
         });
         return this.serializeCoinConfig(coin);
     }
     async updateCoin(coinName, payload) {
-        const coin = await crypto_config_model_1.CryptoConfigModel.findOne({ coin: coinName }).exec();
-        if (!coin) {
+        const existing = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+        });
+        if (!existing) {
             throw new app_error_1.AppError(404, "Coin not found");
         }
-        coin.isEnabled = payload.isEnabled;
-        await coin.save();
+        const coin = await database_1.prisma.cryptoConfig.update({
+            where: { coin: coinName },
+            data: {
+                isEnabled: payload.isEnabled,
+            },
+            include: {
+                networks: true,
+            },
+        });
         return this.serializeCoinConfig(coin);
     }
     async addNetwork(coinName, payload) {
-        const coin = await crypto_config_model_1.CryptoConfigModel.findOne({ coin: coinName }).exec();
+        const coin = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+            include: {
+                networks: true,
+            },
+        });
         if (!coin) {
             throw new app_error_1.AppError(404, "Coin not found");
         }
@@ -145,15 +177,31 @@ class WithdrawalService {
         if (networkExists) {
             throw new app_error_1.AppError(409, "Network already exists for this coin");
         }
-        coin.networks.push({
-            name: payload.name,
-            isEnabled: true,
+        await database_1.prisma.cryptoNetwork.create({
+            data: {
+                cryptoConfigId: coin.id,
+                name: payload.name,
+                isEnabled: true,
+            },
         });
-        await coin.save();
-        return this.serializeCoinConfig(coin);
+        const updatedCoin = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+            include: {
+                networks: true,
+            },
+        });
+        if (!updatedCoin) {
+            throw new app_error_1.AppError(404, "Coin not found");
+        }
+        return this.serializeCoinConfig(updatedCoin);
     }
     async updateNetwork(coinName, networkName, payload) {
-        const coin = await crypto_config_model_1.CryptoConfigModel.findOne({ coin: coinName }).exec();
+        const coin = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+            include: {
+                networks: true,
+            },
+        });
         if (!coin) {
             throw new app_error_1.AppError(404, "Coin not found");
         }
@@ -161,21 +209,44 @@ class WithdrawalService {
         if (!network) {
             throw new app_error_1.AppError(404, "Network not found");
         }
-        network.isEnabled = payload.isEnabled;
-        await coin.save();
-        return this.serializeCoinConfig(coin);
+        await database_1.prisma.cryptoNetwork.update({
+            where: {
+                cryptoConfigId_name: {
+                    cryptoConfigId: coin.id,
+                    name: networkName,
+                },
+            },
+            data: {
+                isEnabled: payload.isEnabled,
+            },
+        });
+        const updatedCoin = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+            include: {
+                networks: true,
+            },
+        });
+        if (!updatedCoin) {
+            throw new app_error_1.AppError(404, "Coin not found");
+        }
+        return this.serializeCoinConfig(updatedCoin);
     }
     async listWithdrawals() {
-        const withdrawals = await withdrawal_model_1.WithdrawalModel.find()
-            .sort({ createdAt: -1 })
-            .lean()
-            .exec();
+        const withdrawals = await database_1.prisma.withdrawal.findMany({
+            include: {
+                snapshot: true,
+            },
+            orderBy: { createdAt: "desc" },
+        });
         return withdrawals.map((withdrawal) => this.serializeWithdrawal(withdrawal));
     }
     async getWithdrawalById(withdrawalId) {
-        const withdrawal = await withdrawal_model_1.WithdrawalModel.findById(withdrawalId)
-            .lean()
-            .exec();
+        const withdrawal = await database_1.prisma.withdrawal.findUnique({
+            where: { id: withdrawalId },
+            include: {
+                snapshot: true,
+            },
+        });
         if (!withdrawal) {
             throw new app_error_1.AppError(404, "Withdrawal not found");
         }
@@ -188,16 +259,28 @@ class WithdrawalService {
         return this.updateWithdrawalStatus(withdrawalId, withdrawal_constants_1.WithdrawalStatus.REJECTED);
     }
     async updateWithdrawalStatus(withdrawalId, status) {
-        const withdrawal = await withdrawal_model_1.WithdrawalModel.findById(withdrawalId).exec();
+        const withdrawal = await database_1.prisma.withdrawal.findUnique({
+            where: { id: withdrawalId },
+            include: {
+                snapshot: true,
+            },
+        });
         if (!withdrawal) {
             throw new app_error_1.AppError(404, "Withdrawal not found");
         }
         if (withdrawal.status !== withdrawal_constants_1.WithdrawalStatus.PENDING) {
             throw new app_error_1.AppError(409, "Only pending withdrawals can be updated");
         }
-        withdrawal.status = status;
-        await withdrawal.save();
-        return this.serializeWithdrawal(withdrawal);
+        const updatedWithdrawal = await database_1.prisma.withdrawal.update({
+            where: { id: withdrawalId },
+            data: {
+                status,
+            },
+            include: {
+                snapshot: true,
+            },
+        });
+        return this.serializeWithdrawal(updatedWithdrawal);
     }
     async resolveNonCryptoSnapshot(userId, settings, payload) {
         if (payload.method === withdrawal_constants_1.WithdrawalMethod.PAYPAL) {
@@ -213,13 +296,13 @@ class WithdrawalService {
     }
     async resolvePaymentSnapshot(userId, method, useSavedDetails, providedDetails) {
         if (useSavedDetails) {
-            const paymentDetails = await user_payment_details_model_1.UserPaymentDetailsModel.findOne({ userId })
-                .lean()
-                .exec();
+            const paymentDetails = await database_1.prisma.userPaymentDetails.findUnique({
+                where: { userId },
+            });
             if (!paymentDetails) {
                 throw new app_error_1.AppError(400, "No saved payment details found for this user");
             }
-            const snapshot = paymentDetails[method];
+            const snapshot = this.getSavedMethodDetails(paymentDetails, method);
             if (!snapshot) {
                 throw new app_error_1.AppError(400, `No saved ${method} details found for this user`);
             }
@@ -228,28 +311,24 @@ class WithdrawalService {
         if (!providedDetails) {
             throw new app_error_1.AppError(400, "Payment details are required");
         }
-        await user_payment_details_model_1.UserPaymentDetailsModel.findOneAndUpdate({ userId }, {
-            $set: {
-                [method]: providedDetails,
-            },
-            $setOnInsert: {
+        await database_1.prisma.userPaymentDetails.upsert({
+            where: { userId },
+            update: this.toPaymentDetailsUpdate(method, providedDetails),
+            create: {
                 userId,
+                ...this.toPaymentDetailsCreate(method, providedDetails),
             },
-        }, {
-            upsert: true,
-            new: true,
-            setDefaultsOnInsert: true,
-        }).exec();
+        });
         return this.cloneSnapshot(providedDetails);
     }
     async assertCryptoRouteEnabled(coinName, networkName) {
-        const coin = await crypto_config_model_1.CryptoConfigModel.findOne({
-            coin: coinName,
-            isEnabled: true,
-        })
-            .lean()
-            .exec();
-        if (!coin) {
+        const coin = await database_1.prisma.cryptoConfig.findUnique({
+            where: { coin: coinName },
+            include: {
+                networks: true,
+            },
+        });
+        if (!coin || !coin.isEnabled) {
             throw new app_error_1.AppError(400, "Selected coin is not enabled");
         }
         const network = coin.networks.find((item) => item.name === networkName && item.isEnabled);
@@ -263,9 +342,9 @@ class WithdrawalService {
         }
     }
     async getSettings() {
-        const settings = await withdrawal_settings_model_1.WithdrawalSettingsModel.findById(withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID)
-            .lean()
-            .exec();
+        const settings = await database_1.prisma.withdrawalSetting.findUnique({
+            where: { id: withdrawal_constants_1.WITHDRAWAL_SETTINGS_ID },
+        });
         if (!settings) {
             throw new app_error_1.AppError(500, "Withdrawal settings are not initialized");
         }
@@ -276,7 +355,7 @@ class WithdrawalService {
     }
     serializeCoinConfig(coin) {
         return {
-            id: coin._id ? String(coin._id) : undefined,
+            id: coin.id,
             coin: coin.coin,
             isEnabled: coin.isEnabled,
             networks: coin.networks.map((network) => ({
@@ -287,17 +366,91 @@ class WithdrawalService {
             ...(coin.updatedAt ? { updatedAt: coin.updatedAt } : {}),
         };
     }
-    serializeWithdrawal(withdrawal) {
+    getSavedMethodDetails(paymentDetails, method) {
+        if (method === withdrawal_constants_1.WithdrawalMethod.PAYPAL) {
+            if (!paymentDetails.paypalEmail ||
+                !paymentDetails.paypalName ||
+                !paymentDetails.paypalPaypalId) {
+                return null;
+            }
+            return {
+                email: paymentDetails.paypalEmail,
+                name: paymentDetails.paypalName,
+                paypalId: paymentDetails.paypalPaypalId,
+            };
+        }
+        if (method === withdrawal_constants_1.WithdrawalMethod.REVOLUT) {
+            if (!paymentDetails.revolutFullName ||
+                !paymentDetails.revolutIban ||
+                !paymentDetails.revolutBic) {
+                return null;
+            }
+            return {
+                fullName: paymentDetails.revolutFullName,
+                iban: paymentDetails.revolutIban,
+                bic: paymentDetails.revolutBic,
+                ...(paymentDetails.revolutTag
+                    ? { tag: paymentDetails.revolutTag }
+                    : {}),
+            };
+        }
+        if (!paymentDetails.bankAccountName ||
+            !paymentDetails.bankSortCode ||
+            !paymentDetails.bankAccountNumber ||
+            !paymentDetails.bankBankName ||
+            !paymentDetails.bankIban ||
+            !paymentDetails.bankBicSwift) {
+            return null;
+        }
         return {
-            id: typeof withdrawal._id === "string"
-                ? withdrawal._id
-                : withdrawal._id.toString(),
-            userId: typeof withdrawal.userId === "string"
-                ? withdrawal.userId
-                : withdrawal.userId.toString(),
+            accountName: paymentDetails.bankAccountName,
+            sortCode: paymentDetails.bankSortCode,
+            accountNumber: paymentDetails.bankAccountNumber,
+            bankName: paymentDetails.bankBankName,
+            iban: paymentDetails.bankIban,
+            bicSwift: paymentDetails.bankBicSwift,
+        };
+    }
+    toPaymentDetailsCreate(method, providedDetails) {
+        return this.toPaymentDetailsUpdate(method, providedDetails);
+    }
+    toPaymentDetailsUpdate(method, providedDetails) {
+        if (method === withdrawal_constants_1.WithdrawalMethod.PAYPAL) {
+            const details = providedDetails;
+            return {
+                paypalEmail: details.email,
+                paypalName: details.name,
+                paypalPaypalId: details.paypalId,
+            };
+        }
+        if (method === withdrawal_constants_1.WithdrawalMethod.REVOLUT) {
+            const details = providedDetails;
+            return {
+                revolutFullName: details.fullName,
+                revolutIban: details.iban,
+                revolutBic: details.bic,
+                revolutTag: details.tag ?? null,
+            };
+        }
+        const details = providedDetails;
+        return {
+            bankAccountName: details.accountName,
+            bankSortCode: details.sortCode,
+            bankAccountNumber: details.accountNumber,
+            bankBankName: details.bankName,
+            bankIban: details.iban,
+            bankBicSwift: details.bicSwift,
+        };
+    }
+    serializeWithdrawal(withdrawal) {
+        const snapshot = this.cloneSnapshot((withdrawal.snapshot ?? {}));
+        delete snapshot.withdrawalId;
+        return {
+            id: withdrawal.id,
+            userId: withdrawal.userId,
             method: withdrawal.method,
             status: withdrawal.status,
-            snapshot: this.cloneSnapshot(withdrawal.snapshot),
+            snapshot,
             createdAt: withdrawal.createdAt,
         };
     }

@@ -8,7 +8,7 @@ const platform_service_1 = require("./modules/platform/platform.service");
 const users_service_1 = require("./modules/users/users.service");
 const withdrawal_service_1 = require("./modules/withdrawal/withdrawal.service");
 const startServer = async () => {
-    await (0, database_1.connectToMongo)();
+    await (0, database_1.connectToMySql)();
     await (0, database_1.connectToRedis)();
     await platform_service_1.platformService.ensureSettingsDocument();
     await platform_service_1.platformService.warmMusicEnabledCache();
@@ -21,7 +21,7 @@ const startServer = async () => {
     const shutdown = async (signal) => {
         logger_1.logger.info("Shutdown signal received", { signal });
         server.close(async () => {
-            await Promise.allSettled([(0, database_1.disconnectFromRedis)(), (0, database_1.disconnectFromMongo)()]);
+            await Promise.allSettled([(0, database_1.disconnectFromRedis)(), (0, database_1.disconnectFromMySql)()]);
             process.exit(0);
         });
         setTimeout(() => {

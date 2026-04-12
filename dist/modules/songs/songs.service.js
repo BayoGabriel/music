@@ -4,8 +4,8 @@ exports.songsService = void 0;
 const app_error_1 = require("../../common/errors/app-error");
 const cloudinary_1 = require("../../config/cloudinary");
 const env_1 = require("../../config/env");
+const database_1 = require("../../database");
 const platform_service_1 = require("../platform/platform.service");
-const song_model_1 = require("./song.model");
 const createPublicId = (title, suffix) => {
     const safeTitle = title
         .toLowerCase()
@@ -15,11 +15,13 @@ const createPublicId = (title, suffix) => {
 };
 class SongsService {
     async createSong(payload) {
-        const duplicateSong = await song_model_1.SongModel.findOne({
-            title: payload.title,
-            artist: payload.artist,
-            isActive: true,
-        }).exec();
+        const duplicateSong = await database_1.prisma.song.findFirst({
+            where: {
+                title: payload.title,
+                artist: payload.artist,
+                isActive: true,
+            },
+        });
         if (duplicateSong) {
             throw new app_error_1.AppError(409, "An active song with the same title and artist already exists");
         }
@@ -37,54 +39,62 @@ class SongsService {
                 resourceType: "image",
             }),
         ]);
-        const song = await song_model_1.SongModel.create({
-            title: payload.title,
-            artist: payload.artist,
-            duration: payload.duration,
-            fileUrl: audioUpload.secure_url,
-            coverImageUrl: coverUpload.secure_url,
-            isActive: true,
+        const song = await database_1.prisma.song.create({
+            data: {
+                title: payload.title,
+                artist: payload.artist,
+                duration: payload.duration,
+                fileUrl: audioUpload.secure_url,
+                coverImageUrl: coverUpload.secure_url,
+                isActive: true,
+            },
         });
         return this.toSongResponse(song);
     }
     async updateSong(songId, payload) {
-        const song = await song_model_1.SongModel.findById(songId).exec();
-        if (!song) {
+        const existingSong = await database_1.prisma.song.findUnique({
+            where: { id: songId },
+        });
+        if (!existingSong) {
             throw new app_error_1.AppError(404, "Song not found");
         }
-        if (payload.title !== undefined) {
-            song.title = payload.title;
-        }
-        if (payload.artist !== undefined) {
-            song.artist = payload.artist;
-        }
-        if (payload.duration !== undefined) {
-            song.duration = payload.duration;
-        }
-        await song.save();
+        const song = await database_1.prisma.song.update({
+            where: { id: songId },
+            data: {
+                ...(payload.title !== undefined ? { title: payload.title } : {}),
+                ...(payload.artist !== undefined ? { artist: payload.artist } : {}),
+                ...(payload.duration !== undefined
+                    ? { duration: payload.duration }
+                    : {}),
+            },
+        });
         return this.toSongResponse(song);
     }
     async softDeleteSong(songId) {
-        const song = await song_model_1.SongModel.findById(songId).exec();
+        const song = await database_1.prisma.song.findUnique({ where: { id: songId } });
         if (!song) {
             throw new app_error_1.AppError(404, "Song not found");
         }
-        song.isActive = false;
-        await song.save();
+        await database_1.prisma.song.update({
+            where: { id: songId },
+            data: {
+                isActive: false,
+            },
+        });
     }
     async listActiveSongs() {
         await this.assertMusicEnabled();
-        const songs = await song_model_1.SongModel.find({ isActive: true })
-            .sort({ createdAt: -1 })
-            .lean()
-            .exec();
+        const songs = await database_1.prisma.song.findMany({
+            where: { isActive: true },
+            orderBy: { createdAt: "desc" },
+        });
         return songs.map((song) => this.toSongResponse(song));
     }
     async getActiveSongById(songId) {
         await this.assertMusicEnabled();
-        const song = await song_model_1.SongModel.findOne({ _id: songId, isActive: true })
-            .lean()
-            .exec();
+        const song = await database_1.prisma.song.findFirst({
+            where: { id: songId, isActive: true },
+        });
         if (!song) {
             throw new app_error_1.AppError(404, "Song not found");
         }
@@ -92,9 +102,9 @@ class SongsService {
     }
     async getActiveSongStream(songId) {
         await this.assertMusicEnabled();
-        const song = await song_model_1.SongModel.findOne({ _id: songId, isActive: true })
-            .lean()
-            .exec();
+        const song = await database_1.prisma.song.findFirst({
+            where: { id: songId, isActive: true },
+        });
         if (!song) {
             throw new app_error_1.AppError(404, "Song not found");
         }
@@ -110,7 +120,7 @@ class SongsService {
     }
     toSongResponse(song) {
         return {
-            id: String(song._id),
+            id: song.id,
             title: song.title,
             artist: song.artist,
             fileUrl: song.fileUrl,

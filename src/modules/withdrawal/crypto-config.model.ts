@@ -1,53 +1,13 @@
-import { InferSchemaType, model, Schema } from 'mongoose';
+export type CryptoNetworkDocument = {
+  name: string;
+  isEnabled: boolean;
+};
 
-const cryptoNetworkSchema = new Schema(
-  {
-    name: {
-      type: String,
-      required: true
-    },
-    isEnabled: {
-      type: Boolean,
-      required: true,
-      default: true
-    }
-  },
-  {
-    _id: false,
-    strict: 'throw'
-  }
-);
-
-const cryptoConfigSchema = new Schema(
-  {
-    coin: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true
-    },
-    isEnabled: {
-      type: Boolean,
-      required: true,
-      default: true
-    },
-    networks: {
-      type: [cryptoNetworkSchema],
-      required: true,
-      default: []
-    }
-  },
-  {
-    strict: 'throw',
-    versionKey: false,
-    timestamps: { createdAt: true, updatedAt: true }
-  }
-);
-
-export type CryptoConfigDocument = InferSchemaType<typeof cryptoConfigSchema> & {
-  _id: string;
+export type CryptoConfigDocument = {
+  id: string;
+  coin: string;
+  isEnabled: boolean;
+  networks: CryptoNetworkDocument[];
   createdAt: Date;
   updatedAt: Date;
 };
-
-export const CryptoConfigModel = model('CryptoConfig', cryptoConfigSchema);

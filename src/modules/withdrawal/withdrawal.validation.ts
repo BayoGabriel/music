@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { WithdrawalMethod } from "./withdrawal.constants";
 
-const mongoIdSchema = z
+const idParamsSchema = z
   .object({
-    id: z.string().length(24),
+    id: z.string().trim().min(1),
   })
   .strict();
 
@@ -182,6 +182,6 @@ export const updateNetworkSchema = z
   })
   .strict();
 
-export const withdrawalIdParamsSchema = mongoIdSchema;
+export const withdrawalIdParamsSchema = idParamsSchema;
 export const coinPathParamsSchema = coinParamsSchema;
 export const coinNetworkPathParamsSchema = coinNetworkParamsSchema;
